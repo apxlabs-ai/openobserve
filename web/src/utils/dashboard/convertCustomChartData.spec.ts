@@ -646,6 +646,31 @@ describe("convertCustomChartData", () => {
       );
     });
 
+    it("should reject access to globalThis", async () => {
+      const acorn = await import("acorn");
+      const walk = await import("acorn-walk");
+
+      vi.mocked(acorn.parse).mockReturnValue({ type: "Program", body: [] } as any);
+      vi.mocked(walk.simple).mockImplementation((ast, visitors) => {
+        if (visitors.MemberExpression) {
+          visitors.MemberExpression({
+            type: "MemberExpression",
+            object: { type: "Identifier", name: "globalThis" },
+            property: { type: "Identifier", name: "escapeMarker" }
+          } as any);
+        }
+      });
+
+      const panelSchema = {
+        id: "panel1",
+        customChartContent: "globalThis.escapeMarker = true;"
+      };
+
+      await expect(runJavaScriptCode(panelSchema, [])).rejects.toThrow(
+        "Unsafe code detected: Access to 'globalThis' is not allowed."
+      );
+    });
+
     it("should reject infinite while loops", async () => {
       const acorn = await import("acorn");
       const walk = await import("acorn-walk");

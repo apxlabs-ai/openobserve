@@ -87,33 +87,31 @@ export default defineComponent({
     let chart = null;
 
     const hoveredSeriesState = inject("hoveredSeriesState", null);
-    const convertStringToFunction = (obj) => {
-      if (typeof obj === "string" && obj.startsWith("function")) {
-        try {
-          return new Function(`return ${obj}`)(); // Convert string to function
-        } catch (error) {
-          emit({
-            message: `Error while executing the code: ${error.message}`,
-            code: "",
-          });
-        }
-      }
+    const looksLikeFunctionSource = (value) =>
+      /^(?:async\s+)?function\b|^(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/.test(
+        value.trim(),
+      );
 
-      if (Array.isArray(obj)) {
-        return obj.map((item) => convertStringToFunction(item)); // Recursively handle arrays
+    const stripExecutableValues = (value) => {
+      if (
+        typeof value === "function" ||
+        (typeof value === "string" && looksLikeFunctionSource(value))
+      ) {
+        return undefined;
       }
-
-      if (typeof obj === "object" && obj !== null) {
-        const result = {};
-        for (const key in obj) {
-          if (obj.hasOwnProperty(key)) {
-            result[key] = convertStringToFunction(obj[key]); // Recursively handle object properties
-          }
-        }
-        return result;
+      if (Array.isArray(value)) {
+        return value
+          .map(stripExecutableValues)
+          .filter((item) => item !== undefined);
       }
-
-      return obj; // If it's not a function string or an object, return it as is
+      if (typeof value === "object" && value !== null) {
+        return Object.fromEntries(
+          Object.entries(value)
+            .map(([key, item]) => [key, stripExecutableValues(item)])
+            .filter(([, item]) => item !== undefined),
+        );
+      }
+      return value;
     };
     function deepSanitize(obj) {
       if (typeof obj === "string") {
@@ -144,19 +142,9 @@ export default defineComponent({
       }
 
       try {
-        const convertedData = convertStringToFunction(props.data);
-        const safeChartOptions = deepSanitize(convertedData);
+        const dataOnlyOptions = stripExecutableValues(props.data);
+        const safeChartOptions = deepSanitize(dataOnlyOptions);
         chart.setOption(safeChartOptions);
-
-        if (convertedData.o2_events) {
-          // Add event listeners for custom interactions
-          for (const event in convertedData.o2_events) {
-            chart.off(event);
-            chart.on(event, (params) =>
-              convertedData.o2_events[event](params, chart),
-            );
-          }
-        }
       } catch (e) {
         emit({
           message: "Error while executing the code",
