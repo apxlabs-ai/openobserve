@@ -215,8 +215,33 @@ describe("CustomChartRenderer", () => {
     });
   });
 
-  describe("Function Conversion", () => {
-    it("should convert string functions to executable functions", () => {
+  describe("Executable Value Filtering", () => {
+    it("keeps saved custom-chart callbacks out of the viewer context", async () => {
+      const marker = "__customChartSandboxEscape";
+      delete (globalThis as any)[marker];
+
+      wrapper = createWrapper({
+        data: {
+          ...mockChartData,
+          series: [
+            {
+              type: "scatter",
+              data: [[1, 1]],
+              symbolSize:
+                "function() { globalThis.__customChartSandboxEscape = 'executed'; return 10; }",
+            },
+          ],
+        },
+      });
+      await waitForChartInit(wrapper);
+
+      const renderedOptions = mockChart.setOption.mock.calls.at(-1)?.[0];
+      expect(renderedOptions.title.text).toBe("Test Chart");
+      expect(typeof renderedOptions.series[0].symbolSize).not.toBe("function");
+      expect((globalThis as any)[marker]).toBeUndefined();
+    });
+
+    it("should remove string functions", async () => {
       const stringFunction = "function() { return 'test'; }";
       
       wrapper = createWrapper({
@@ -225,25 +250,28 @@ describe("CustomChartRenderer", () => {
           customFunction: stringFunction
         }
       });
-      
-      // Component should handle function conversion without errors
-      expect(wrapper.exists()).toBe(true);
+      await waitForChartInit(wrapper);
+
+      const renderedOptions = mockChart.setOption.mock.calls.at(-1)?.[0];
+      expect(renderedOptions.customFunction).toBeUndefined();
     });
 
-    it("should handle invalid function strings gracefully", () => {
+    it("should remove invalid function strings without evaluating them", async () => {
       const invalidFunction = "function() { invalid syntax }";
       
-      expect(() => {
-        wrapper = createWrapper({
-          data: {
-            ...mockChartData,
-            customFunction: invalidFunction
-          }
-        });
-      }).not.toThrow();
+      wrapper = createWrapper({
+        data: {
+          ...mockChartData,
+          customFunction: invalidFunction
+        }
+      });
+      await waitForChartInit(wrapper);
+
+      const renderedOptions = mockChart.setOption.mock.calls.at(-1)?.[0];
+      expect(renderedOptions.customFunction).toBeUndefined();
     });
 
-    it("should process arrays with function strings", () => {
+    it("should remove function strings from arrays", async () => {
       const dataWithFunctionArray = {
         ...mockChartData,
         formatters: [
@@ -252,12 +280,14 @@ describe("CustomChartRenderer", () => {
         ]
       };
       
-      expect(() => {
-        wrapper = createWrapper({ data: dataWithFunctionArray });
-      }).not.toThrow();
+      wrapper = createWrapper({ data: dataWithFunctionArray });
+      await waitForChartInit(wrapper);
+
+      const renderedOptions = mockChart.setOption.mock.calls.at(-1)?.[0];
+      expect(renderedOptions.formatters).toEqual([]);
     });
 
-    it("should handle nested objects with functions", () => {
+    it("should remove function strings from nested objects", async () => {
       const nestedData = {
         ...mockChartData,
         tooltip: {
@@ -265,9 +295,11 @@ describe("CustomChartRenderer", () => {
         }
       };
       
-      expect(() => {
-        wrapper = createWrapper({ data: nestedData });
-      }).not.toThrow();
+      wrapper = createWrapper({ data: nestedData });
+      await waitForChartInit(wrapper);
+
+      const renderedOptions = mockChart.setOption.mock.calls.at(-1)?.[0];
+      expect(renderedOptions.tooltip.formatter).toBeUndefined();
     });
 
     it("should return non-function strings as-is", () => {
@@ -320,7 +352,7 @@ describe("CustomChartRenderer", () => {
   });
 
   describe("Event Handling", () => {
-    it("should handle chart events when o2_events exist", async () => {
+    it("should not reconstruct saved chart event handlers", async () => {
       const eventData = {
         ...mockChartData,
         o2_events: {
@@ -331,12 +363,13 @@ describe("CustomChartRenderer", () => {
       wrapper = createWrapper({ data: eventData });
       await waitForChartInit(wrapper);
       
-      // Should set up event listeners
-      expect(mockChart.off).toHaveBeenCalledWith('click');
-      expect(mockChart.on).toHaveBeenCalledWith('click', expect.any(Function));
+      const renderedOptions = mockChart.setOption.mock.calls.at(-1)?.[0];
+      expect(renderedOptions.o2_events).toEqual({});
+      expect(mockChart.off).not.toHaveBeenCalled();
+      expect(mockChart.on).not.toHaveBeenCalled();
     });
 
-    it("should handle multiple event types", async () => {
+    it("should remove multiple saved chart event handlers", async () => {
       const multiEventData = {
         ...mockChartData,
         o2_events: {
@@ -348,10 +381,10 @@ describe("CustomChartRenderer", () => {
       wrapper = createWrapper({ data: multiEventData });
       await waitForChartInit(wrapper);
       
-      expect(mockChart.off).toHaveBeenCalledWith('click');
-      expect(mockChart.off).toHaveBeenCalledWith('mouseover');
-      expect(mockChart.on).toHaveBeenCalledWith('click', expect.any(Function));
-      expect(mockChart.on).toHaveBeenCalledWith('mouseover', expect.any(Function));
+      const renderedOptions = mockChart.setOption.mock.calls.at(-1)?.[0];
+      expect(renderedOptions.o2_events).toEqual({});
+      expect(mockChart.off).not.toHaveBeenCalled();
+      expect(mockChart.on).not.toHaveBeenCalled();
     });
 
     it("should not set up events when o2_events is empty", async () => {

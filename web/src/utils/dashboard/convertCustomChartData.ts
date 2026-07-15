@@ -208,6 +208,7 @@ export const validateUserCode = (code: string): string | null => {
 
     const forbiddenIdentifiers: string[] = [
       "window",
+      "globalThis",
       "document",
       "localStorage",
       "sessionStorage",
